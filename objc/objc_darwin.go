@@ -1,8 +1,7 @@
 package objc
 
 /*
-#cgo LDFLAGS: -Wl,--no-as-needed -lobjc
-#define __OBJC2__ 1
+#cgo LDFLAGS: -lobjc
 #include <objc/runtime.h>
 #include <objc/message.h>
 */
