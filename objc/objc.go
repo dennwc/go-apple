@@ -4,6 +4,9 @@ import "C"
 
 import "unsafe"
 
+// GetClass returns the class definition of a specified class.
+//
+// See https://developer.apple.com/documentation/objectivec/1418952-objc_getclass?language=objc
 func GetClass(name string) *Class {
 	cstr := C.CString(name)
 	c := objc_getClass(cstr)
@@ -14,6 +17,9 @@ func GetClass(name string) *Class {
 	return &Class{class: c}
 }
 
+// ListClasses obtains the list of registered class definitions.
+//
+// See https://developer.apple.com/documentation/objectivec/1418579-objc_getclasslist?language=objc
 func ListClasses() []Class {
 	n := objc_getClassList(nil, 0)
 	if n == 0 {
@@ -50,6 +56,9 @@ func (c Class) String() string {
 	return c.Name()
 }
 
+// Name returns the name of a class.
+//
+// See https://developer.apple.com/documentation/objectivec/1418635-class_getname?language=objc
 func (c Class) Name() string {
 	if !c.Valid() {
 		return ""
@@ -58,6 +67,9 @@ func (c Class) Name() string {
 	return C.GoString(cstr)
 }
 
+// GetSuperclass returns the superclass of a class.
+//
+// See https://developer.apple.com/documentation/objectivec/1418498-class_getsuperclass?language=objc
 func (c *Class) GetSuperclass() *Class {
 	if c == nil {
 		return nil
@@ -69,6 +81,9 @@ func (c *Class) GetSuperclass() *Class {
 	return &Class{class: s}
 }
 
+// IsMetaClass returns a boolean value that indicates whether a class object is a metaclass.
+//
+// See https://developer.apple.com/documentation/objectivec/1418627-class_ismetaclass?language=objc
 func (c *Class) IsMetaClass() bool {
 	if c == nil {
 		return false
@@ -76,6 +91,9 @@ func (c *Class) IsMetaClass() bool {
 	return class_isMetaClass(c.class)
 }
 
+// GetInstanceSize returns the size of instances of a class.
+//
+// See https://developer.apple.com/documentation/objectivec/1418907-class_getinstancesize?language=objc
 func (c *Class) GetInstanceSize() uintptr {
 	if c == nil {
 		return 0
