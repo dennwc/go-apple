@@ -8,3 +8,7 @@ os:
   - osx
 
 sudo: false
+
+install:
+  - env GO111MODULE=on go get ./...
+  - if [[ $TRAVIS_OS_NAME = linux ]]; then sudo apt-get update -y && sudo apt-get install gobjc gnustep gnustep-devel; fi
