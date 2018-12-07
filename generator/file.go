@@ -81,7 +81,7 @@ func (g *Generator) loadFuncs(funcs []xmlfile.MemberdefType) error {
 			return err
 		}
 		if e, ok := ret.(appkitExtern); ok {
-			ret = e.Elem
+			ret = e.Type
 			f.Extern = true
 		}
 		ft.Return = ret

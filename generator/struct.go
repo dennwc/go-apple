@@ -2,12 +2,12 @@ package generator
 
 import (
 	"fmt"
-	"github.com/dennwc/go-doxy"
 	"io"
 	"log"
 	"strings"
 	"unicode"
 
+	"github.com/dennwc/go-doxy"
 	"github.com/dennwc/go-doxy/xmlindex"
 )
 
@@ -17,6 +17,20 @@ type StructType struct {
 	Attributes []*Attribute
 	Properties []*Property
 	Methods    []*Function
+}
+
+func (t *StructType) GoTypeName() (string, bool) {
+	if !t.ensureGoName() {
+		return "", false
+	}
+	return t.GoName, true
+}
+
+func (t *StructType) CastToObjC(exp string) (string, bool) {
+	if !t.ensureGoName() {
+		return "", false
+	}
+	return exp, true
 }
 
 func toExportedName(s string) string {
@@ -46,36 +60,27 @@ func New%s() %s {
 		t.GoName, t.GoName,
 		t.GoName, t.Name,
 	)
-	isString := func(tp Type) bool {
-		if e, ok := tp.(PtrType); !ok {
-			return false
-		} else {
-			tp = e.Elem
-		}
-		if e, ok := tp.(NamedType); !ok || e.Name != "NSString" {
-			return false
-		}
-		return true
-	}
 
 	// setters
 	for _, p := range t.Properties {
 		name := toExportedName(p.Name)
-
-		if !isString(p.Type) {
-			continue // FIXME
+		tp, ok := p.Type.GoTypeName()
+		if !ok {
+			log.Printf("skipping %q - %#v", name, p.Type)
+			continue
 		}
-
+		cast, ok := p.Type.CastToObjC("v")
+		if !ok {
+			log.Printf("skipping %q - %#v", name, p.Type)
+			continue
+		}
 		fmt.Fprintf(w, `
-func (o %s) Set%s(v string`,
-			t.GoName, name,
-		)
-		//p.Type.printGo(w)
-		fmt.Fprintf(w, `) {
-	o.SendMsg(%q, foundation.NSStringFromString(v))
+func (o %s) Set%s(v %s) {
+	o.SendMsg(%q, %s)
 }
 `,
-			"set"+name+":",
+			t.GoName, name, tp,
+			"set"+name+":", cast,
 		)
 	}
 	// methods
@@ -83,8 +88,13 @@ methods:
 	for _, m := range t.Methods {
 		// FIXME: return
 		for _, p := range m.Type.Args {
-			if !isString(p.Type) {
-				continue methods // FIXME
+			_, ok := p.Type.GoTypeName()
+			if !ok {
+				continue methods
+			}
+			_, ok = p.Type.CastToObjC("v")
+			if !ok {
+				continue methods
 			}
 		}
 		name := toExportedName(strings.TrimSuffix(m.Name, ":"))
@@ -96,14 +106,16 @@ func (o %s) %s(`,
 			if i != 0 {
 				fmt.Fprint(w, ", ")
 			}
-			fmt.Fprintf(w, `%s string`, p.Name)
+			typ, _ := p.Type.GoTypeName()
+			fmt.Fprintf(w, `%s %s`, p.Name, typ)
 		}
 		fmt.Fprintf(w, `) {
 	o.SendMsg(%q`,
 			m.Name,
 		)
 		for _, p := range m.Type.Args {
-			fmt.Fprintf(w, `, foundation.NSStringFromString(%s)`, p.Name)
+			cast, _ := p.Type.CastToObjC(p.Name)
+			fmt.Fprintf(w, `, %s`, cast)
 		}
 		fmt.Fprintf(w, `)
 }
@@ -124,11 +136,11 @@ func (t *StructType) printGoDef(w io.Writer) bool {
 	fmt.Fprintf(w, "type %s struct {\n", t.GoName)
 	ok := true
 	for _, f := range t.Attributes {
-		fmt.Fprintf(w, "\t%s ", f.Name)
-		if !f.Type.printGo(w) {
+		ft, ok2 := f.Type.GoTypeName()
+		if !ok2 {
 			ok = false
-			continue
 		}
+		fmt.Fprintf(w, "\t%s %s", f.Name, ft)
 		if p := f.Pos; p != nil {
 			fmt.Fprintf(w, "\t// %s", p)
 		}

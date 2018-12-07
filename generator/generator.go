@@ -2,7 +2,6 @@ package generator
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"sort"
 	"strings"
@@ -90,7 +89,11 @@ const (
 )
 
 type Type interface {
-	printGo(w io.Writer) bool
+	// GoTypeName returns a code snippet of the Go type that corresponds to ObjC type.
+	// If the returned bool is false, this means that the type cannot be converted yet.
+	GoTypeName() (string, bool)
+	// CastToObjC casts an expression from Go type returned by GoTypeName to ObjC type.
+	CastToObjC(exp string) (string, bool)
 }
 
 type TypeDefinition interface {
@@ -115,14 +118,6 @@ func (t *BaseNode) ensureGoName() bool {
 	if t.GoName == "" {
 		t.GoName = strings.Replace(t.Name, ":", "_", -1)
 	}
-	return true
-}
-
-func (t BaseNode) printGo(w io.Writer) bool {
-	if t.GoName == "" {
-		t.GoName = strings.Replace(t.Name, ":", "_", -1)
-	}
-	fmt.Fprint(w, t.GoName)
 	return true
 }
 

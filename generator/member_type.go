@@ -1,6 +1,7 @@
 package generator
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -17,8 +18,10 @@ var (
 		"void *":          PrimitiveType{Name: "uintptr"},
 		"__strong void *": PrimitiveType{Name: "uintptr"},               // TODO
 		"char *":          ArrayType{Elem: PrimitiveType{Name: "byte"}}, // []byte
+		"NSString *":      NSString{},
 	}
 	primitiveTypes = map[string]string{
+		"BOOL":               "bool",
 		"bool":               "bool",
 		"char":               "byte",
 		"int8_t":             "int8",
@@ -46,34 +49,32 @@ type PrimitiveType struct {
 	Name string
 }
 
-func (t PrimitiveType) printGo(w io.Writer) bool {
-	fmt.Fprint(w, t.Name)
-	return true
+func (t PrimitiveType) GoTypeName() (string, bool) {
+	return t.Name, true
+}
+
+func (t PrimitiveType) CastToObjC(exp string) (string, bool) {
+	return exp, true
 }
 
 type NamedType struct {
 	Name string
 }
 
-func (t NamedType) printGo(w io.Writer) bool {
-	fmt.Fprint(w, t.Name)
-	return true
+func (t NamedType) GoTypeName() (string, bool) {
+	return t.Name, true
+}
+
+func (t NamedType) CastToObjC(exp string) (string, bool) {
+	return exp, false
 }
 
 type ConstType struct {
-	Elem Type
-}
-
-func (t ConstType) printGo(w io.Writer) bool {
-	return t.Elem.printGo(w)
+	Type
 }
 
 type StrongType struct {
-	Elem Type
-}
-
-func (t StrongType) printGo(w io.Writer) bool {
-	return t.Elem.printGo(w)
+	Type
 }
 
 type NullableType struct {
@@ -81,25 +82,30 @@ type NullableType struct {
 	Nullable bool
 }
 
-func (t NullableType) printGo(w io.Writer) bool {
-	return t.Elem.printGo(w)
+func (t NullableType) GoTypeName() (string, bool) {
+	return t.Elem.GoTypeName()
 }
 
+func (t NullableType) CastToObjC(exp string) (string, bool) {
+	return t.Elem.CastToObjC(exp)
+}
+
+// appkitExtern represents an EXTERN macros. It's only used while parsing, it shouldn't appear in the tree.
 type appkitExtern struct {
-	Elem Type
-}
-
-func (t appkitExtern) printGo(w io.Writer) bool {
-	return t.Elem.printGo(w)
+	Type
 }
 
 type PtrType struct {
 	Elem Type
 }
 
-func (t PtrType) printGo(w io.Writer) bool {
-	fmt.Fprint(w, "*")
-	return t.Elem.printGo(w)
+func (t PtrType) GoTypeName() (string, bool) {
+	e, ok := t.Elem.GoTypeName()
+	return "*" + e, ok
+}
+
+func (t PtrType) CastToObjC(exp string) (string, bool) {
+	return t.Elem.CastToObjC(exp)
 }
 
 type ArrayType struct {
@@ -107,9 +113,13 @@ type ArrayType struct {
 	Elem Type
 }
 
-func (t ArrayType) printGo(w io.Writer) bool {
-	fmt.Fprintf(w, "[%s]", t.Size)
-	return t.Elem.printGo(w)
+func (t ArrayType) GoTypeName() (string, bool) {
+	e, ok := t.Elem.GoTypeName()
+	return "[" + t.Size + "]" + e, ok
+}
+
+func (t ArrayType) CastToObjC(exp string) (string, bool) {
+	return t.Elem.CastToObjC(exp)
 }
 
 type FuncType struct {
@@ -117,15 +127,22 @@ type FuncType struct {
 	Args   []*FuncArg
 }
 
+func (t *FuncType) GoTypeName() (string, bool) {
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString("func")
+	ok := t.printGoArgs(buf)
+	return buf.String(), ok
+}
+
+func (t *FuncType) CastToObjC(exp string) (string, bool) {
+	return exp, false // TODO(dennwc): cannot convert functions, need to write cgo wrappers
+}
+
 type FuncArg struct {
 	Name string
 	Type Type
 }
 
-func (t *FuncType) printGo(w io.Writer) bool {
-	fmt.Fprint(w, "func")
-	return t.printGoArgs(w)
-}
 func (t *FuncType) printGoArgs(w io.Writer) bool {
 	fmt.Fprint(w, "(")
 	hasNames := false
@@ -147,17 +164,23 @@ func (t *FuncType) printGoArgs(w io.Writer) bool {
 		if name != "" {
 			fmt.Fprintf(w, "%s ", name)
 		}
-		if a.Type == nil || !a.Type.printGo(w) {
+		if a.Type == nil {
 			ok = false
 			continue
 		}
+		at, ok2 := a.Type.GoTypeName()
+		if !ok2 {
+			ok = false
+		}
+		fmt.Fprint(w, at)
 	}
 	fmt.Fprint(w, ")")
 	if t.Return != nil {
-		fmt.Fprint(w, " ")
-		if !t.Return.printGo(w) {
+		rt, ok2 := t.Return.GoTypeName()
+		if !ok2 {
 			ok = false
 		}
+		fmt.Fprint(w, " "+rt)
 	}
 	return ok
 }
@@ -167,16 +190,19 @@ type UnknownType struct {
 	Comment string
 }
 
-func (t UnknownType) printGo(w io.Writer) bool {
+func (t UnknownType) GoTypeName() (string, bool) {
 	typ := "interface{}"
 	if t.Name != "" {
 		typ = t.Name
 	}
-	fmt.Fprint(w, typ)
 	if t.Comment != "" {
-		fmt.Fprintf(w, " /* %s */", t.Comment)
+		typ += " /* " + t.Comment + " */"
 	}
-	return false
+	return typ, false
+}
+
+func (t UnknownType) CastToObjC(exp string) (string, bool) {
+	return exp, false
 }
 
 var prefixWrappers = []struct {
@@ -185,7 +211,7 @@ var prefixWrappers = []struct {
 	wrap   func(Type) Type
 }{
 	{prefix: "APPKIT_EXTERN ", wrap: func(e Type) Type {
-		return appkitExtern{Elem: e}
+		return appkitExtern{e}
 	}},
 	{prefix: "__nullable ", wrap: func(e Type) Type {
 		return NullableType{Elem: e, Nullable: true}
@@ -194,10 +220,10 @@ var prefixWrappers = []struct {
 		return e // TODO
 	}},
 	{prefix: "const ", wrap: func(e Type) Type {
-		return ConstType{Elem: e}
+		return ConstType{e}
 	}},
 	{prefix: "__strong ", wrap: func(e Type) Type {
-		return StrongType{Elem: e}
+		return StrongType{e}
 	}},
 	{suffix: "*", wrap: func(e Type) Type {
 		return PtrType{Elem: e}
