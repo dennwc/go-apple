@@ -33,6 +33,13 @@ func (t *StructType) CastToObjC(exp string) (string, bool) {
 	return exp, true
 }
 
+func (t *StructType) CastToGo(exp string) (string, bool) {
+	if !t.ensureGoName() {
+		return "", false
+	}
+	return exp, true
+}
+
 func toExportedName(s string) string {
 	r := []rune(s)
 	r[0] = unicode.ToUpper(r[0])
@@ -86,17 +93,42 @@ func (o %s) Set%s(v %s) {
 	// methods
 methods:
 	for _, m := range t.Methods {
-		// FIXME: return
-		for _, p := range m.Type.Args {
+		ft := m.Type
+		for _, p := range ft.Args {
 			_, ok := p.Type.GoTypeName()
 			if !ok {
 				continue methods
 			}
-			_, ok = p.Type.CastToObjC("v")
+		}
+
+		callStmt := fmt.Sprintf("o.SendMsg(%q", m.Name)
+		for _, p := range ft.Args {
+			cast, ok := p.Type.CastToObjC(p.Name)
 			if !ok {
 				continue methods
 			}
+			callStmt += ", " + cast
 		}
+		callStmt += ")"
+
+		comment := ""
+
+		returnType := ""
+		if ft.Return != nil {
+			// let's dump the method anyway without return if this fails
+			if typ, ok := ft.Return.GoTypeName(); ok {
+				cast, ok := ft.Return.CastToGo(callStmt)
+				if ok {
+					returnType = " " + typ
+					callStmt = "return " + cast
+				} else {
+					returnType = " /* TODO: " + typ + " */"
+				}
+			} else {
+				comment = fmt.Sprintf("\n\t// FIXME: return %#v", ft.Return)
+			}
+		}
+
 		name := toExportedName(strings.TrimSuffix(m.Name, ":"))
 		fmt.Fprintf(w, `
 func (o %s) %s(`,
@@ -109,17 +141,7 @@ func (o %s) %s(`,
 			typ, _ := p.Type.GoTypeName()
 			fmt.Fprintf(w, `%s %s`, p.Name, typ)
 		}
-		fmt.Fprintf(w, `) {
-	o.SendMsg(%q`,
-			m.Name,
-		)
-		for _, p := range m.Type.Args {
-			cast, _ := p.Type.CastToObjC(p.Name)
-			fmt.Fprintf(w, `, %s`, cast)
-		}
-		fmt.Fprintf(w, `)
-}
-`)
+		fmt.Fprintf(w, ")%s {\n\t%s%s\n}\n", returnType, callStmt, comment)
 	}
 	return true
 }

@@ -57,6 +57,15 @@ func (t PrimitiveType) CastToObjC(exp string) (string, bool) {
 	return exp, true
 }
 
+func (t PrimitiveType) CastToGo(exp string) (string, bool) {
+	switch t.Name {
+	case "bool":
+		return exp + ".Bool()", true
+	}
+	// TODO: more types
+	return exp, false
+}
+
 type NamedType struct {
 	Name string
 }
@@ -69,6 +78,10 @@ func (t NamedType) CastToObjC(exp string) (string, bool) {
 	return exp, false
 }
 
+func (t NamedType) CastToGo(exp string) (string, bool) {
+	return exp, false
+}
+
 type ConstType struct {
 	Type
 }
@@ -78,16 +91,8 @@ type StrongType struct {
 }
 
 type NullableType struct {
-	Elem     Type
+	Type
 	Nullable bool
-}
-
-func (t NullableType) GoTypeName() (string, bool) {
-	return t.Elem.GoTypeName()
-}
-
-func (t NullableType) CastToObjC(exp string) (string, bool) {
-	return t.Elem.CastToObjC(exp)
 }
 
 // appkitExtern represents an EXTERN macros. It's only used while parsing, it shouldn't appear in the tree.
@@ -108,6 +113,10 @@ func (t PtrType) CastToObjC(exp string) (string, bool) {
 	return t.Elem.CastToObjC(exp)
 }
 
+func (t PtrType) CastToGo(exp string) (string, bool) {
+	return t.Elem.CastToGo(exp)
+}
+
 type ArrayType struct {
 	Size string // TODO: expression
 	Elem Type
@@ -119,7 +128,11 @@ func (t ArrayType) GoTypeName() (string, bool) {
 }
 
 func (t ArrayType) CastToObjC(exp string) (string, bool) {
-	return t.Elem.CastToObjC(exp)
+	return exp, false
+}
+
+func (t ArrayType) CastToGo(exp string) (string, bool) {
+	return exp, false
 }
 
 type FuncType struct {
@@ -136,6 +149,10 @@ func (t *FuncType) GoTypeName() (string, bool) {
 
 func (t *FuncType) CastToObjC(exp string) (string, bool) {
 	return exp, false // TODO(dennwc): cannot convert functions, need to write cgo wrappers
+}
+
+func (t *FuncType) CastToGo(exp string) (string, bool) {
+	return exp, false
 }
 
 type FuncArg struct {
@@ -205,6 +222,10 @@ func (t UnknownType) CastToObjC(exp string) (string, bool) {
 	return exp, false
 }
 
+func (t UnknownType) CastToGo(exp string) (string, bool) {
+	return exp, false
+}
+
 var prefixWrappers = []struct {
 	prefix string
 	suffix string
@@ -214,7 +235,10 @@ var prefixWrappers = []struct {
 		return appkitExtern{e}
 	}},
 	{prefix: "__nullable ", wrap: func(e Type) Type {
-		return NullableType{Elem: e, Nullable: true}
+		return NullableType{Type: e, Nullable: true}
+	}},
+	{prefix: "nullable ", wrap: func(e Type) Type {
+		return NullableType{Type: e, Nullable: true}
 	}},
 	{prefix: "__null_unspecified ", wrap: func(e Type) Type {
 		return e // TODO
@@ -229,13 +253,13 @@ var prefixWrappers = []struct {
 		return PtrType{Elem: e}
 	}},
 	{suffix: "_Nullable", wrap: func(e Type) Type {
-		return NullableType{Elem: e, Nullable: true}
+		return NullableType{Type: e, Nullable: true}
 	}},
 	{suffix: "__nonnull", wrap: func(e Type) Type {
-		return NullableType{Elem: e, Nullable: false}
+		return NullableType{Type: e, Nullable: false}
 	}},
 	{suffix: "__nullable", wrap: func(e Type) Type {
-		return NullableType{Elem: e, Nullable: true}
+		return NullableType{Type: e, Nullable: true}
 	}},
 	{suffix: "__null_unspecified", wrap: func(e Type) Type {
 		return e // TODO

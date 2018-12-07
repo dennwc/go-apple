@@ -9,3 +9,7 @@ func (NSString) GoTypeName() (string, bool) {
 func (NSString) CastToObjC(exp string) (string, bool) {
 	return "foundation.NSStringFromString(" + exp + ")", true
 }
+
+func (NSString) CastToGo(exp string) (string, bool) {
+	return exp + ".String()", true
+}

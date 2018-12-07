@@ -27,27 +27,29 @@ type Generator struct {
 	funcs map[string]*Function
 }
 
-func (g *Generator) LoadDoxygen(dir string) error {
-	idx, err := doxy.OpenXML(dir)
-	if err != nil {
-		return err
-	}
-	for _, ent := range idx.Entries() {
-		switch ent.Kind {
-		case xmlindex.CompoundKindStruct,
-			xmlindex.CompoundKindClass,
-			xmlindex.CompoundKindInterface:
-			if err := g.loadDoxyStruct(ent); err != nil {
-				return err
+func (g *Generator) LoadDoxygen(dirs ...string) error {
+	for _, dir := range dirs {
+		idx, err := doxy.OpenXML(dir)
+		if err != nil {
+			return err
+		}
+		for _, ent := range idx.Entries() {
+			switch ent.Kind {
+			case xmlindex.CompoundKindStruct,
+				xmlindex.CompoundKindClass,
+				xmlindex.CompoundKindInterface:
+				if err := g.loadDoxyStruct(ent); err != nil {
+					return err
+				}
+			//case xmlindex.CompoundKindUnion:
+			// TODO
+			case xmlindex.CompoundKindFile:
+				if err := g.loadDoxyFile(ent); err != nil {
+					return err
+				}
+			default:
+				//log.Println("unhandled entry type:", ent.Kind)
 			}
-		//case xmlindex.CompoundKindUnion:
-		// TODO
-		case xmlindex.CompoundKindFile:
-			if err := g.loadDoxyFile(ent); err != nil {
-				return err
-			}
-		default:
-			//log.Println("unhandled entry type:", ent.Kind)
 		}
 	}
 	if err := g.attachMethods(); err != nil {
@@ -94,6 +96,8 @@ type Type interface {
 	GoTypeName() (string, bool)
 	// CastToObjC casts an expression from Go type returned by GoTypeName to ObjC type.
 	CastToObjC(exp string) (string, bool)
+	// CastToGo casts an expression from objc.Object to a Go type returned by GoTypeName.
+	CastToGo(exp string) (string, bool)
 }
 
 type TypeDefinition interface {
