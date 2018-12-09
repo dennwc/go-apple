@@ -15,10 +15,11 @@ var (
 	overrideTypes = map[string]Type{
 		"": PrimitiveType{Name: "interface{}"},
 		// TODO: unsafe.Pointer?
-		"void *":          PrimitiveType{Name: "uintptr"},
-		"__strong void *": PrimitiveType{Name: "uintptr"},               // TODO
-		"char *":          ArrayType{Elem: PrimitiveType{Name: "byte"}}, // []byte
-		"NSString *":      NSString{},
+		"void *":           PrimitiveType{Name: "uintptr"},
+		"__strong void *":  PrimitiveType{Name: "uintptr"},               // TODO
+		"char *":           ArrayType{Elem: PrimitiveType{Name: "byte"}}, // []byte
+		"NSString *":       NSString{},
+		"NSNotification *": NSNotification{},
 	}
 	primitiveTypes = map[string]string{
 		"BOOL":               "bool",
@@ -71,6 +72,13 @@ type NamedType struct {
 }
 
 func (t NamedType) GoTypeName() (string, bool) {
+	if t.Name == "" {
+		return "", false
+	}
+	r := []rune(t.Name)
+	if !unicode.IsLetter(r[0]) {
+		return t.Name, false
+	}
 	return t.Name, true
 }
 
@@ -79,7 +87,11 @@ func (t NamedType) CastToObjC(exp string) (string, bool) {
 }
 
 func (t NamedType) CastToGo(exp string) (string, bool) {
-	return exp, false
+	name, ok := t.GoTypeName()
+	if !ok {
+		return exp, false
+	}
+	return "As" + name + "(" + exp + ")", true
 }
 
 type ConstType struct {

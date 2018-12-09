@@ -1,9 +1,7 @@
 package generator
 
 import (
-	"bytes"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/dennwc/go-doxy"
@@ -41,10 +39,12 @@ func (g *Generator) LoadDoxygen(dirs ...string) error {
 				if err := g.loadDoxyStruct(ent); err != nil {
 					return err
 				}
-			//case xmlindex.CompoundKindUnion:
-			// TODO
 			case xmlindex.CompoundKindFile:
 				if err := g.loadDoxyFile(ent); err != nil {
+					return err
+				}
+			case xmlindex.CompoundKindProtocol:
+				if err := g.loadDoxyProtocol(ent); err != nil {
 					return err
 				}
 			default:
@@ -52,36 +52,7 @@ func (g *Generator) LoadDoxygen(dirs ...string) error {
 			}
 		}
 	}
-	if err := g.attachMethods(); err != nil {
-		return err
-	}
 	return nil
-}
-
-func (g *Generator) PrintGo(w io.Writer) {
-	refs := make([]string, 0, len(g.types))
-	//for ref := range g.types {
-	//	refs = append(refs, ref)
-	//}
-	//sort.Strings(refs)
-	//for _, ref := range refs {
-	//	buf := bytes.NewBuffer(nil)
-	//	if g.types[ref].printGoDef(buf) {
-	//		buf.WriteTo(w)
-	//	}
-	//}
-
-	refs = refs[:0]
-	for name := range g.funcs {
-		refs = append(refs, name)
-	}
-	sort.Strings(refs)
-	for _, name := range refs {
-		buf := bytes.NewBuffer(nil)
-		if g.funcs[name].printGoDef(buf) {
-			buf.WriteTo(w)
-		}
-	}
 }
 
 type Protection string
@@ -102,7 +73,8 @@ type Type interface {
 
 type TypeDefinition interface {
 	Type
-	printGoDef(w io.Writer) bool
+	getName() string
+	PrintGoWrapper(w io.Writer) bool
 }
 
 type BaseNode struct {

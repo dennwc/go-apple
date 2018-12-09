@@ -7,6 +7,10 @@ github.com/dennwc/go-doxy v0.0.0-20181105005135-302d04639955/go.mod h1:6hPfCDCac
 github.com/dennwc/go-doxy v0.0.0-20181114005332-04fde1f87bd9 h1:e+8WvMHwiHKJNH8eZ5gGuBjgbLnyTEEYiKOVoVyqTZ4=
 github.com/dennwc/go-doxy v0.0.0-20181114005332-04fde1f87bd9/go.mod h1:6hPfCDCacLD7XPFNGrx8hkw49IKRnNrQJOCAx658zKU=
 github.com/dennwc/go-xml v0.0.0-20181105010919-8343dd811fbf/go.mod h1:O0GDxS8nIWI/hgUr1spoN/S3OMWkbq3aKWIlkANAM7w=
+github.com/mkrautz/objc v0.0.0-20131120221344-7599ab513c1f h1:ovYGA0wUHxPrQ3HhMuMqPUjJ61GMoFig620cTxIRKbI=
+github.com/mkrautz/objc v0.0.0-20131120221344-7599ab513c1f/go.mod h1:zVNfPQoPb0mrc3Ua4+87XAv6KgtArHEuIzw/cnUHX/Y=
+github.com/mkrautz/variadic v0.0.0-20131120212741-710a4c853bd6 h1:7pgGd7AP12FoyI6EJXzKZ7SVkS15r/CDMItRkxA5uXs=
+github.com/mkrautz/variadic v0.0.0-20131120212741-710a4c853bd6/go.mod h1:6luU1+BUkrt0Ugtln/7FkHseU2T1baWl/W5bw29A8QQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.1 h1:2vfRuCMp5sSVIDSqO8oNnWJq7mPa6KVP3iPIwFBuy8A=

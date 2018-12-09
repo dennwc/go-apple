@@ -8,7 +8,14 @@ import (
 	"unicode"
 
 	"github.com/dennwc/go-doxy"
+	"github.com/dennwc/go-doxy/xmlfile"
 	"github.com/dennwc/go-doxy/xmlindex"
+)
+
+var (
+	_ attributeHost = (*StructType)(nil)
+	_ propertyHost  = (*StructType)(nil)
+	_ methodHost    = (*StructType)(nil)
 )
 
 type StructType struct {
@@ -17,6 +24,22 @@ type StructType struct {
 	Attributes []*Attribute
 	Properties []*Property
 	Methods    []*Function
+}
+
+func (t *StructType) getName() string {
+	return t.Name
+}
+
+func (t *StructType) addAttribute(f *Attribute) {
+	t.Attributes = append(t.Attributes, f)
+}
+
+func (t *StructType) addProperty(f *Property) {
+	t.Properties = append(t.Properties, f)
+}
+
+func (t *StructType) addMethod(f *Function) {
+	t.Methods = append(t.Methods, f)
 }
 
 func (t *StructType) GoTypeName() (string, bool) {
@@ -60,12 +83,20 @@ type %s struct {
 }
 
 func New%s() %s {
-	return %s{objc.GetClass(%q).SendMsg("alloc").SendMsg("init")}
+	return As%s(objc.GetClass(%q).SendMsg("alloc").SendMsg("init"))
+}
+
+func As%s(v objc.Object) %s {
+	return %s{v}
 }
 `,
 		t.GoName,
+
 		t.GoName, t.GoName,
 		t.GoName, t.Name,
+
+		t.GoName, t.GoName,
+		t.GoName,
 	)
 
 	// setters
@@ -73,12 +104,12 @@ func New%s() %s {
 		name := toExportedName(p.Name)
 		tp, ok := p.Type.GoTypeName()
 		if !ok {
-			log.Printf("skipping %q - %#v", name, p.Type)
+			fmt.Fprintf(w, "\n// TODO: property %s (%#v)\n", name, p.Type)
 			continue
 		}
 		cast, ok := p.Type.CastToObjC("v")
 		if !ok {
-			log.Printf("skipping %q - %#v", name, p.Type)
+			fmt.Fprintf(w, "\n// TODO: property %s (%#v)\n", name, p.Type)
 			continue
 		}
 		fmt.Fprintf(w, `
@@ -146,30 +177,9 @@ func (o %s) %s(`,
 	return true
 }
 
-func (t *StructType) printGoDef(w io.Writer) bool {
-	if !t.ensureGoName() {
-		return false
-	}
-	fmt.Fprintf(w, "// %s", t.Name)
-	if p := t.Pos; p != nil {
-		fmt.Fprintf(w, " (%s)", p)
-	}
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "type %s struct {\n", t.GoName)
-	ok := true
-	for _, f := range t.Attributes {
-		ft, ok2 := f.Type.GoTypeName()
-		if !ok2 {
-			ok = false
-		}
-		fmt.Fprintf(w, "\t%s %s", f.Name, ft)
-		if p := f.Pos; p != nil {
-			fmt.Fprintf(w, "\t// %s", p)
-		}
-		fmt.Fprintln(w)
-	}
-	fmt.Fprint(w, "}\n\n")
-	return ok
+type attributeHost interface {
+	TypeDefinition
+	addAttribute(a *Attribute)
 }
 
 type Attribute struct {
@@ -181,6 +191,11 @@ type Attribute struct {
 
 	Pos   *Location
 	Range *LineRange
+}
+
+type propertyHost interface {
+	TypeDefinition
+	addProperty(p *Property)
 }
 
 type Property struct {
@@ -213,12 +228,21 @@ func (g *Generator) loadDoxyStruct(ent doxy.Entry) error {
 		BaseNode: entToBaseNode(ent, def),
 		IsClass:  ent.Kind == xmlindex.CompoundKindClass,
 	}
+	return g.loadDoxyObject(t, ent, def)
+}
 
+func (g *Generator) loadDoxyObject(t TypeDefinition, ent doxy.Entry, def xmlfile.CompounddefType) error {
+	defAttr, _ := t.(attributeHost)
+	defProp, _ := t.(propertyHost)
+	defFnc, _ := t.(methodHost)
 	for _, sec := range def.Sectiondef {
 		switch sec.Kind {
 		case "public-attrib", "public-static-attrib",
 			"protected-attrib", "protected-static-attrib",
 			"private-attrib", "private-static-attrib":
+			if defAttr == nil {
+				return fmt.Errorf("%T cannot host attributes", t)
+			}
 			for _, attr := range sec.Memberdef {
 				f := &Attribute{
 					Name:   attr.Name,
@@ -234,13 +258,16 @@ func (g *Generator) loadDoxyStruct(ent doxy.Entry) error {
 				}
 				f.Type = typ
 
-				t.Attributes = append(t.Attributes, f)
+				defAttr.addAttribute(f)
 
 				if attr.Kind != "variable" {
 					log.Println("unexpected struct attribute kind:", attr.Kind)
 				}
 			}
 		case "property":
+			if defProp == nil {
+				return fmt.Errorf("%T (%s) cannot host properties", t, t.getName())
+			}
 			for _, attr := range sec.Memberdef {
 				f := &Property{
 					Name:     attr.Name,
@@ -256,31 +283,34 @@ func (g *Generator) loadDoxyStruct(ent doxy.Entry) error {
 				}
 				f.Type = typ
 
-				t.Properties = append(t.Properties, f)
+				defProp.addProperty(f)
 
 				if attr.Kind != "property" {
 					log.Println("unexpected struct property kind:", attr.Kind)
 				}
 			}
-		case "func", "public-func":
-			if err := g.loadFuncs(sec.Memberdef); err != nil {
+		case "func", "public-func": // TODO: static ("public-static-func")
+			if defFnc == nil {
+				return fmt.Errorf("%T cannot host methods", t)
+			}
+			if err := g.loadFuncs(defFnc, sec.Memberdef); err != nil {
 				return err
 			}
 		default:
-			//log.Println("unhandled struct section:", sec.Kind)
+			//log.Println("unhandled object section:", sec.Kind)
 		}
 	}
 	return nil
 }
 
-func (g *Generator) StructByName(name string) *StructType {
+func (g *Generator) TypeByName(name string) TypeDefinition {
 	for _, t := range g.types {
-		s, ok := t.(*StructType)
+		tname, ok := t.GoTypeName()
 		if !ok {
 			continue
 		}
-		if s.Name == name {
-			return s
+		if tname == name {
+			return t
 		}
 	}
 	return nil

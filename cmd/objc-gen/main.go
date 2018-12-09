@@ -29,7 +29,7 @@ func generate(w io.Writer) error {
 	if err := g.LoadDoxygen(*f_xml); err != nil {
 		return err
 	}
-	s := g.StructByName(*f_class)
+	s := g.TypeByName(*f_class)
 	if s == nil {
 		return fmt.Errorf("unknown class: %q", *f_class)
 	}
