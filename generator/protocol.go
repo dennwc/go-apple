@@ -133,7 +133,32 @@ methods:
 	return true
 }
 
+func (t *ProtocolType) printGoCtor(w io.Writer) bool {
+	// Go constructor
+	fmt.Fprintf(w,
+		`
+func New%s(v %s) objc.Object {
+	o := objc.GetClass(%q).
+		SendMsg("alloc").
+		SendMsg("init")
+	v.SetObjcRef(o)
+	return go%s{Object:o, v:v}
+}
+`,
+		t.GoName, t.GoName,
+		"go"+t.GoName,
+		t.GoName,
+	)
+	return true
+}
+
 func (t *ProtocolType) printGoImpl(w io.Writer) bool {
+	if !t.printGoClassReg(w) {
+		return false
+	}
+	if !t.printGoCtor(w) {
+		return false
+	}
 	// Go wrapper type
 	fmt.Fprintf(w,
 		"\ntype go%s struct{\n\tobjc.Object `objc:\"go%s : %s\"`\n\tv %s\n}\n",
@@ -197,9 +222,6 @@ methods:
 		}
 		fmt.Fprint(w, callStmt)
 		fmt.Fprint(w, "\n}\n")
-	}
-	if !t.printGoClassReg(w) {
-		return false
 	}
 	return true
 }
