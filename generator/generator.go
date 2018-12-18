@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ func NewGenerator(pkg string, dir string) (*Generator, error) {
 		types:   make(map[refid]TypeDefinition),
 		files:   make(map[refid]BaseNode),
 		funcs:   make(map[string]*Function),
+		named:   make(map[string]*NamedType),
 		goFiles: make(map[string]struct{}),
 	}, nil
 }
@@ -36,6 +38,9 @@ type Generator struct {
 	types map[refid]TypeDefinition
 	files map[refid]BaseNode
 	funcs map[string]*Function
+
+	named      map[string]*NamedType
+	unresolved []*NamedType
 
 	goFiles map[string]struct{}
 }
@@ -118,7 +123,33 @@ func (g *Generator) LoadDoxygen(dirs ...string) error {
 	return nil
 }
 
+func (g *Generator) resolveAll() error {
+	var unresolved []*NamedType
+	for _, named := range g.unresolved {
+		if named.Def != nil {
+			continue
+		}
+		ok := false
+		for _, def := range g.types {
+			if def.getName() == named.Name {
+				named.Def = def
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			log.Printf("unresolved: %q", named.Name)
+			unresolved = append(unresolved, named)
+		}
+	}
+	g.unresolved = unresolved
+	return nil
+}
+
 func (g *Generator) GenerateAll() error {
+	if err := g.resolveAll(); err != nil {
+		return err
+	}
 	for _, t := range g.types {
 		f, err := g.fileForType(t)
 		if err != nil {

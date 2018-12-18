@@ -3,6 +3,7 @@ package generator
 import (
 	"io"
 	"strings"
+	"unicode"
 
 	"github.com/dennwc/go-doxy"
 	"github.com/dennwc/go-doxy/xmlfile"
@@ -30,6 +31,32 @@ type TypeDefinition interface {
 	PrintGoWrapper(w io.Writer) bool
 }
 
+var nameReplacer = strings.NewReplacer(
+	":", "_",
+	"-", "_",
+)
+
+func toGoName(name string, exp bool) string {
+	if name == "" {
+		return ""
+	}
+	name = nameReplacer.Replace(name)
+	if exp {
+		name = string(unicode.ToUpper(rune(name[0]))) + name[1:]
+	} else {
+		name = string(unicode.ToLower(rune(name[0]))) + name[1:]
+	}
+	switch name {
+	case "type":
+		return "typ"
+	case "select":
+		return "sel"
+	case "range":
+		return "rng"
+	}
+	return name
+}
+
 type BaseNode struct {
 	refid  string
 	Name   string
@@ -45,7 +72,7 @@ func (t *BaseNode) ensureGoName() bool {
 		return false
 	}
 	if t.GoName == "" {
-		t.GoName = strings.Replace(t.Name, ":", "_", -1)
+		t.GoName = nameReplacer.Replace(t.Name)
 	}
 	return true
 }

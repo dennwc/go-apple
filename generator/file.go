@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	"github.com/dennwc/go-doxy"
@@ -88,9 +89,12 @@ func (g *Generator) loadFuncs(rec methodHost, funcs []xmlfile.MemberdefType) err
 		}
 		ft.Return = ret
 
-		for _, p := range m.Param {
+		for i, p := range m.Param {
 			arg := &FuncArg{
-				Name: p.Declname,
+				Name: toGoName(p.Declname, false),
+			}
+			if arg.Name == "" {
+				arg.Name = "arg" + strconv.Itoa(i)
 			}
 			ft.Args = append(ft.Args, arg)
 

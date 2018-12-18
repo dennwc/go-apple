@@ -3,6 +3,7 @@ package generator
 import (
 	"fmt"
 	"io"
+	"log"
 	"strings"
 
 	"github.com/dennwc/go-doxy"
@@ -23,6 +24,12 @@ func (t *ProtocolType) getName() string {
 }
 
 func (t *ProtocolType) addMethod(f *Function) {
+	for _, f2 := range t.Methods {
+		if f2.Name == f.Name {
+			log.Printf("redeclaration of %q.%q", t.Name, f.Name)
+			return
+		}
+	}
 	t.Methods = append(t.Methods, f)
 }
 
@@ -62,6 +69,15 @@ func (t *ProtocolType) PrintGoWrapper(w io.Writer) bool {
 		return false
 	}
 	return true
+}
+
+func (t *ProtocolType) goMethName(name string) string {
+	if strings.HasSuffix(name, ":") {
+		// TODO: only if collides?
+		name = strings.TrimSuffix(name, ":") + "_"
+	}
+	name = toExportedName(strings.Replace(name, ":", "_", -1))
+	return name
 }
 
 func (t *ProtocolType) printGoInterface(w io.Writer) bool {
@@ -115,7 +131,7 @@ methods:
 			}
 		}
 
-		name := toExportedName(strings.Replace(strings.TrimSuffix(m.Name, ":"), ":", "_", -1))
+		name := t.goMethName(m.Name)
 		fmt.Fprintf(w, "%s\t%s(",
 			comment,
 			name,
@@ -144,14 +160,19 @@ func New%s(v %s) objc.Object {
 	v.SetObjcRef(o)
 	return go%s{Object:o, v:v}
 }
+
+func As%s(v objc.Object) %s {
+	panic("not implemented")
+}
 `,
 		t.GoName, t.GoName,
 		"go"+t.GoName,
 		t.GoName,
+
+		t.GoName, t.GoName,
 	)
 	return true
 }
-
 func (t *ProtocolType) printGoImpl(w io.Writer) bool {
 	if !t.printGoClassReg(w) {
 		return false
@@ -191,7 +212,7 @@ methods:
 			}
 		}
 
-		name := toExportedName(strings.Replace(strings.TrimSuffix(m.Name, ":"), ":", "_", -1))
+		name := t.goMethName(m.Name)
 		fmt.Fprintf(w, "func (o go%s) %s(",
 			t.GoName,
 			name,
@@ -204,7 +225,18 @@ methods:
 		}
 		fmt.Fprint(w, ")")
 		if returnType != "" {
-			fmt.Fprint(w, " objc.Object")
+
+			if pt, ok := ft.Return.(PrimitiveType); ok {
+				switch pt.Name {
+				case "bool":
+					fmt.Fprint(w, " ", pt.Name)
+				default:
+					// TODO: more types
+					fmt.Fprint(w, " objc.Object")
+				}
+			} else {
+				fmt.Fprint(w, " objc.Object")
+			}
 		}
 		fmt.Fprint(w, " {\n\t")
 		callStmt := fmt.Sprintf("o.v.%s(", name)
@@ -250,7 +282,7 @@ methods:
 			}
 		}
 
-		name := toExportedName(strings.Replace(strings.TrimSuffix(m.Name, ":"), ":", "_", -1))
+		name := t.goMethName(m.Name)
 		fmt.Fprintf(w, `
 	c.AddMethod(%q, go%s.%s)`,
 			m.Name, t.GoName, name,

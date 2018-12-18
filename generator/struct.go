@@ -2,14 +2,12 @@ package generator
 
 import (
 	"fmt"
-	"io"
-	"log"
-	"strings"
-	"unicode"
-
 	"github.com/dennwc/go-doxy"
 	"github.com/dennwc/go-doxy/xmlfile"
 	"github.com/dennwc/go-doxy/xmlindex"
+	"io"
+	"log"
+	"strings"
 )
 
 var (
@@ -39,6 +37,12 @@ func (t *StructType) addProperty(f *Property) {
 }
 
 func (t *StructType) addMethod(f *Function) {
+	for _, f2 := range t.Methods {
+		if f2.Name == f.Name {
+			log.Printf("redeclaration of %q.%q", t.Name, f.Name)
+			return
+		}
+	}
 	t.Methods = append(t.Methods, f)
 }
 
@@ -53,6 +57,7 @@ func (t *StructType) CastToObjC(exp string) (string, bool) {
 	if !t.ensureGoName() {
 		return "", false
 	}
+	// no need to cast - implements objc.Object
 	return exp, true
 }
 
@@ -60,13 +65,24 @@ func (t *StructType) CastToGo(exp string) (string, bool) {
 	if !t.ensureGoName() {
 		return "", false
 	}
-	return exp, true
+	name, ok := t.GoTypeName()
+	if !ok {
+		return exp, false
+	}
+	return "As" + name + "(" + exp + ")", true
 }
 
 func toExportedName(s string) string {
-	r := []rune(s)
-	r[0] = unicode.ToUpper(r[0])
-	return string(r)
+	return toGoName(s, true)
+}
+
+func (t *StructType) goMethName(name string) string {
+	if strings.HasSuffix(name, ":") {
+		// TODO: only if collides?
+		name = strings.TrimSuffix(name, ":") + "_"
+	}
+	name = toExportedName(strings.Replace(name, ":", "_", -1))
+	return name
 }
 
 func (t *StructType) PrintGoWrapper(w io.Writer) bool {
@@ -151,7 +167,7 @@ methods:
 				cast, ok := ft.Return.CastToGo(callStmt)
 				if ok {
 					returnType = " " + typ
-					callStmt = "return " + cast
+					callStmt = "return " + cast + fmt.Sprintf(" // from %#v", ft.Return)
 				} else {
 					returnType = " /* TODO: " + typ + " */"
 				}
@@ -160,7 +176,7 @@ methods:
 			}
 		}
 
-		name := toExportedName(strings.TrimSuffix(m.Name, ":"))
+		name := t.goMethName(m.Name)
 		fmt.Fprintf(w, `
 func (o %s) %s(`,
 			t.GoName, name,

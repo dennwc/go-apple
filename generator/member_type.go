@@ -5,21 +5,23 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"unicode"
 
 	"github.com/dennwc/go-doxy/xmlfile"
 )
 
+const rawType = "objc.Object"
+
 var (
 	overrideTypes = map[string]Type{
 		"": PrimitiveType{Name: "interface{}"},
 		// TODO: unsafe.Pointer?
-		"void *":           PrimitiveType{Name: "uintptr"},
-		"__strong void *":  PrimitiveType{Name: "uintptr"},               // TODO
-		"char *":           ArrayType{Elem: PrimitiveType{Name: "byte"}}, // []byte
-		"NSString *":       NSString{},
-		"NSNotification *": NSNotification{},
+		"void *":          PrimitiveType{Name: "uintptr"},
+		"__strong void *": PrimitiveType{Name: "uintptr"},               // TODO
+		"char *":          ArrayType{Elem: PrimitiveType{Name: "byte"}}, // []byte
+		"NSString *":      NSString{},
 	}
 	primitiveTypes = map[string]string{
 		"BOOL":               "bool",
@@ -33,6 +35,8 @@ var (
 		"uint16_t":           "uint16",
 		"uint32_t":           "uint32",
 		"uint64_t":           "uint64",
+		"float":              "float32",
+		"double":             "float64",
 		"int":                "int",     // TODO
 		"long":               "int64",   // TODO
 		"long long":          "int64",   // TODO
@@ -62,6 +66,8 @@ func (t PrimitiveType) CastToGo(exp string) (string, bool) {
 	switch t.Name {
 	case "bool":
 		return exp + ".Bool()", true
+	case "uintptr":
+		return exp + ".Pointer()", true
 	}
 	// TODO: more types
 	return exp, false
@@ -69,29 +75,31 @@ func (t PrimitiveType) CastToGo(exp string) (string, bool) {
 
 type NamedType struct {
 	Name string
+	Def  TypeDefinition
 }
 
-func (t NamedType) GoTypeName() (string, bool) {
+func (t *NamedType) GoTypeName() (string, bool) {
 	if t.Name == "" {
 		return "", false
 	}
-	r := []rune(t.Name)
-	if !unicode.IsLetter(r[0]) {
-		return t.Name, false
+	if t.Def == nil {
+		return "objc.Object", true
 	}
-	return t.Name, true
+	return t.Def.GoTypeName()
 }
 
-func (t NamedType) CastToObjC(exp string) (string, bool) {
-	return exp, false
+func (t *NamedType) CastToObjC(exp string) (string, bool) {
+	if t.Def == nil {
+		return exp, true // objc.Object
+	}
+	return t.Def.CastToObjC(exp)
 }
 
-func (t NamedType) CastToGo(exp string) (string, bool) {
-	name, ok := t.GoTypeName()
-	if !ok {
-		return exp, false
+func (t *NamedType) CastToGo(exp string) (string, bool) {
+	if t.Def == nil {
+		return exp, true // objc.Object
 	}
-	return "As" + name + "(" + exp + ")", true
+	return t.Def.CastToGo(exp)
 }
 
 type ConstType struct {
@@ -118,15 +126,30 @@ type PtrType struct {
 
 func (t PtrType) GoTypeName() (string, bool) {
 	e, ok := t.Elem.GoTypeName()
-	return "*" + e, ok
+	if e != rawType { // TODO: better way to check it
+		e = "*" + e
+	}
+	return e, ok
 }
 
 func (t PtrType) CastToObjC(exp string) (string, bool) {
+	if e, _ := t.Elem.GoTypeName(); e != rawType {
+		exp = "*" + exp
+	}
 	return t.Elem.CastToObjC(exp)
 }
 
 func (t PtrType) CastToGo(exp string) (string, bool) {
-	return t.Elem.CastToGo(exp)
+	exp, ok := t.Elem.CastToGo(exp)
+	if !ok {
+		return exp, false
+	}
+	if e, ok := t.Elem.GoTypeName(); e != rawType && ok {
+		exp = fmt.Sprintf(`func() *%s { v := %s; return &v } ()`,
+			e, exp,
+		)
+	}
+	return exp, ok
 }
 
 type ArrayType struct {
@@ -322,9 +345,13 @@ func (g *Generator) getTypeByName(typ string) (Type, error) {
 				if err != nil {
 					return nil, err
 				}
-				fnc.Args = append(fnc.Args, &FuncArg{
-					Name: name, Type: typ,
-				})
+				arg := &FuncArg{
+					Name: toGoName(name, false), Type: typ,
+				}
+				if arg.Name == "" {
+					arg.Name = "arg" + strconv.Itoa(i)
+				}
+				fnc.Args = append(fnc.Args)
 			}
 			return fnc, nil
 		}
@@ -375,7 +402,13 @@ func (g *Generator) getTypeByName(typ string) (Type, error) {
 		return PrimitiveType{Name: t}, nil
 	}
 	if !strings.ContainsAny(typ, " (:") {
-		return NamedType{Name: typ}, nil
+		if named, ok := g.named[typ]; ok {
+			return named, nil
+		}
+		named := &NamedType{Name: typ}
+		g.named[typ] = named
+		g.unresolved = append(g.unresolved, named)
+		return named, nil
 	}
 	return UnknownType{Comment: typ}, nil
 }
